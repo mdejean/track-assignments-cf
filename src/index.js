@@ -216,8 +216,11 @@ export default {
     async scheduled(event, env, ctx) {
         let db = env.TRAINSTATE.getByName("the only instance");
         // let trains = await fetch_amtrak(db, env)
-        const [lirr, njt] = await Promise.all([fetch_lirr(db, env), fetch_njt(db, env)]);
-        console.log(`NJT ${njt[0]} written, ${njt[1]} read`);
-        console.log(`LIRR ${lirr[0]} written, ${lirr[1]} read`);
+        fetch_njt(db, env).then(njt => 
+            console.log(`NJT ${njt[0]} written, ${njt[1]} read`)
+        );
+        fetch_lirr(db, env).then(lirr => 
+            console.log(`LIRR ${lirr[0]} written, ${lirr[1]} read`)
+        );
     },
 };

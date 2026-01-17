@@ -129,7 +129,7 @@ async function fetch_lirr(db, env) {
                     "otp": stop_details?.act_time ? stop_details.sched_time - stop_details.act_time : null,
                     "canceled": train?.status?.canceled,
                     "passengers": passengers,
-                    "loading_desc": loading_desc,
+                    "loading_desc": JSON.stringify(loading_desc),
                     "do_update": do_update,
                 });
             }

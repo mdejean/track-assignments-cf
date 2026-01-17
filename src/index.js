@@ -80,7 +80,7 @@ async function fetch_lirr(db, env) {
         async function handle_req(res) {
             if (res.status != 200) {
                 console.log(`LIRR for {stop} Got HTTP ${res.status} : ${t}`);
-                return Promise.resolve([0, 0]);
+                return Promise.resolve([]);
             }
             let trains = [];
             for (let train of await res.json()) {
@@ -109,13 +109,17 @@ async function fetch_lirr(db, env) {
                     && train?.details?.stops?.at(-1)?.code != stop) {
                     do_update = 'once';
                     passengers = cars.reduce((a, c) => a + (c?.passengers || 0), 0) || null;
-                    loading_desc = cars.map(c => c?.loading || '');
+                    if (!passengers) {
+                        loading_desc = cars.map(c => c?.loading || '');
+                    }
                 } else if (train?.details?.direction == 'W' && stop_details?.stop_status == 'EN_ROUTE') {
                     // Update the passenger count until the train arrives
                     // TODO: evaluate the number of wasted writes this causes
                     do_update = 'yes';
                     passengers = cars.reduce((a, c) => a + (c?.passengers || 0), 0) || null;
-                    loading_desc = cars.map(c => c?.loading || '');
+                    if (!passengers) {
+                        loading_desc = cars.map(c => c?.loading || '');
+                    }
                 } else {
                     passengers = null;
                     loading_desc = null;
@@ -205,10 +209,8 @@ export default {
         const url = new URL(req.url);
         
         if (url.pathname == '/getCurrent') {
-            let station = url.searchParams.get("station");
-            let date = url.searchParams.get("date");
             let db = env.TRAINSTATE.getByName("the only instance");
-            let trains = await db.get_trains(Date.parse(date) / 1000, station);
+            let trains = await db.get_last_train();
             return Response.json(trains);
         }
     },

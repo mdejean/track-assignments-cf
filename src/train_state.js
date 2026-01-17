@@ -36,6 +36,38 @@ export class TrainState extends DurableObject {
             };
             
             this.sql.exec(schema_sql);
+            
+            const run_date = Date.parse(new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString().substring(0, 10)) / 1000;
+            this.track_occupancy = {};
+            let result = this.sql.exec(`
+                select
+                    operator,
+                    run_date,
+                    train_no,
+                    train_time,
+                    stop,
+                    track
+                    otp,
+                    canceled,
+                    passengers,
+                    loading_desc,
+                    route,
+                    origin,
+                    destination,
+                    consist
+                from train_track tt
+                join train_route tr using (run_date, operator, train_no)
+                where (stop, run_date, operator, train_no, 1) in (
+                    select
+                        stop, run_date, operator, train_no, row_number() over (partition by track order by train_time desc) rnk
+                    from train_track
+                    where stop in ('NYK', 'NYP', 'NY') and run_date = ?
+                    and track is not null
+                );`, run_date);
+            console.log(`hydrating track_occupancy read ${result.rowsRead} rows`);
+            for (let t of result) {
+                this.track_occupancy[t.track] = t;
+            }
         });
     }
     
@@ -75,28 +107,25 @@ export class TrainState extends DurableObject {
             }
             
             let track_result = this.sql.exec(`
-                insert into train_track (operator, run_date, train_time, train_no, stop, track, otp, canceled, passengers, loading_desc)
-                                 values (       ?,        ?,          ?,        ?,    ?,     ?,   ?,        ?,          ?,            ?)
-                ` + conflict_clause,   t.operator, t.run_date, t.train_time, t.train_no, t.stop, t.track, t.otp, t.canceled, t.passengers, t.loading_desc);
+                insert into train_track (  operator,   run_date,   train_time,   train_no,   stop,   track,   otp,   canceled,   passengers,   loading_desc)
+                                 values (         ?,          ?,            ?,          ?,      ?,       ?,     ?,          ?,            ?,              ?)
+                ` + conflict_clause,     t.operator, t.run_date, t.train_time, t.train_no, t.stop, t.track, t.otp, t.canceled, t.passengers, t.loading_desc);
             
             write += route_result.rowsWritten + track_result.rowsWritten;
             read += route_result.rowsRead + track_result.rowsRead;
+            
+            if (t.track && (t.stop == 'NY' || t.stop == 'NYK' || t.stop == 'NYP')) {
+                // going to just ignore the possiblity that trains could go out of schedule order on a track
+                if ((this.track_occupancy?.[t.track]?.train_time || 0) < t.train_time) {
+                    this.track_occupancy[t.track] = t;
+                }
+            }
         }
         
         return [write, read];
     }
     
-    async get_trains(run_date, station) {
-        let res = this.sql.exec(`
-            select * from train_track where (train_time, track) in (
-                select max(train_time), track from train_track
-                where track is not null
-                and run_date = ?
-                and stop = ?
-                group by track
-            )
-            and run_date = ?`, run_date, station, run_date);
-        console.log(res.rowsRead + " rows read");
-        return res.toArray();
+    async get_last_train() {
+        return this.track_occupancy;
     }
 }

@@ -68,7 +68,7 @@ async function fetch_njt(db, env) {
 async function fetch_lirr(db, env) {
     let promises = [];
     for (let stop of ['ATL', 'HPA', 'LIC', 'GCT', 'WDD', 'NYK', 'JAM', '0NY']) {
-        let req = fetch(env.LIRR_API + stop + "?include_passed=true&hours=0.5",
+        let req = fetch(env.LIRR_API + stop + "?include_passed=true&hours=0.33",
             {
                 "method": "GET",
                 "headers": new Headers({

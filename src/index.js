@@ -137,12 +137,6 @@ async function fetch_lirr(db, env) {
             }
             
             return trains;
-            // skip RPC if no trains
-            if (trains) {
-                
-            } else {
-                return Promise.resolve([0, 0]);
-            }
         }
     }
     

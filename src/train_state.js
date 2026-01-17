@@ -37,37 +37,7 @@ export class TrainState extends DurableObject {
             
             this.sql.exec(schema_sql);
             
-            const run_date = Date.parse(new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString().substring(0, 10)) / 1000;
-            this.track_occupancy = {};
-            let result = this.sql.exec(`
-                select
-                    operator,
-                    run_date,
-                    train_no,
-                    train_time,
-                    stop,
-                    track
-                    otp,
-                    canceled,
-                    passengers,
-                    loading_desc,
-                    route,
-                    origin,
-                    destination,
-                    consist
-                from train_track tt
-                join train_route tr using (run_date, operator, train_no)
-                where (stop, run_date, operator, train_no, 1) in (
-                    select
-                        stop, run_date, operator, train_no, row_number() over (partition by track order by train_time desc) rnk
-                    from train_track
-                    where stop in ('NYK', 'NYP', 'NY') and run_date = ?
-                    and track is not null
-                );`, run_date);
-            console.log(`hydrating track_occupancy read ${result.rowsRead} rows`);
-            for (let t of result) {
-                this.track_occupancy[t.track] = t;
-            }
+            this.track_occupancy = this.kv.get("track_occupancy");
         });
     }
     
@@ -118,6 +88,7 @@ export class TrainState extends DurableObject {
                 // going to just ignore the possiblity that trains could go out of schedule order on a track
                 if ((this.track_occupancy?.[t.track]?.train_time || 0) < t.train_time) {
                     this.track_occupancy[t.track] = t;
+                    ctx.storage.kv.put("track_occupancy", this.track_occupancy);
                 }
             }
         }

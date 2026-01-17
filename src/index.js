@@ -76,7 +76,7 @@ async function fetch_lirr(db, env) {
                     "x-api-key": env.API_KEY,
                 }),
             });
-        promises.push(req.then(handle_req, async (reason) => con));
+        promises.push(req.then(handle_req, async (reason) => Promise.resolve(reason)));
         async function handle_req(res) {
             if (res.status != 200) {
                 console.log(`LIRR for {stop} Got HTTP ${res.status} : ${t}`);

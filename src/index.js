@@ -6,10 +6,17 @@
 export { TrainState } from "./train_state";
 export { NJTToken } from "./njt_token";
 
+
+// Now doing the whole fancy token thingy (more security theater)
 async function fetch_njt(db, env) {
-    let token = await env.NJTTOKEN.getByName("token").get_token();
+    // run date changes at 8AM GMT (4AM EDT / 3AM EST) when no NJT trains depart
+    function get_run_date(d) {
+        let t = (Date.parse(d) / 1000 - 8 * 60 * 60) | 0;
+        let days = (t / (60 * 60 * 24)) | 0;
+        return days * 60 * 60 * 24;
+    }
     
-    console.log(token);
+    let token = await env.NJTTOKEN.getByName("token").get_token();
     
     let fd = new FormData();
     fd.append("token", token);
@@ -32,27 +39,109 @@ async function fetch_njt(db, env) {
     if (resp.status != 200) {
         let t = await resp.text();
         console.log(`NJT Got HTTP ${resp.status} : ${t}`);
-        return [];
+        return [0, 0];
     } else {
         let j = await resp.json();
-        return j["ITEMS"].map((t) =>
-            ({
-                "stop": "NY",
-                "operator": (t["TRAIN_ID"][0] == 'A') ? "Amtrak" : "NJT",
-                "train_time":  Date.parse(t["SCHED_DEP_DATE"] + " " + tzname) / 1000,
-                "train_no": ((t["TRAIN_ID"][0] == 'A') ? t["TRAIN_ID"].substring(1) : t["TRAIN_ID"]),
-                "route": t["LINEABBREVIATION"],
-                "origin": "NY",
-                "destination": t["DESTINATION"].replace(/-SEC|&#9992/g,"").trim(),
-                "track": t["TRACK"] || null,
-                "consist": null,
-                "otp": t["SEC_LATE"],
-                "canceled": t["STATUS"].startsWith("CANCEL"),
-            })
+        return db.add_track(
+            j["ITEMS"].map((t) =>
+                ({
+                    "stop": "NY",
+                    "operator": (t["TRAIN_ID"][0] == 'A') ? "Amtrak" : "NJT",
+                    "train_time": Date.parse(t["SCHED_DEP_DATE"] + " " + tzname) / 1000,
+                    "run_date": get_run_date(t["SCHED_DEP_DATE"] + " " + tzname),
+                    "train_no": ((t["TRAIN_ID"][0] == 'A') ? t["TRAIN_ID"].substring(1) : t["TRAIN_ID"]),
+                    "route": t["LINEABBREVIATION"],
+                    "origin": "NY",
+                    "destination": t["DESTINATION"].replace(/-SEC|&#9992/g,"").trim(),
+                    "track": t["TRACK"] || null,
+                    "consist": null,
+                    "otp": t["SEC_LATE"],
+                    "canceled": t["STATUS"].startsWith("CANCEL"),
+                    "do_update": "yes",
+                })
+            )
         );
     }
 }
 
+// for this one we do lots of stations and get passenger counts - can we keep it under 10 ms?
+async function fetch_lirr(db, env) {
+    let promises = [];
+    for (let stop of ['ATL', 'HPA', 'LIC', 'GCT', 'WDD', 'NYK', 'JAM', '0NY']) {
+        let req = fetch(env.LIRR_API + stop + "?include_passed=true&hours=0.5",
+            {
+                "method": "GET",
+                "headers": new Headers({
+                    "Accept-Version": "3.0",
+                    "x-api-key": env.API_KEY,
+                }),
+            });
+        promises.push(req.then(handle_req));
+        async function handle_req(res) {
+            let trains = [];
+            for (let train of await res.json()) {
+                
+                let stop_details = train.details?.stops?.find(s => s.code == stop);
+                let event_details = train.details?.events?.find(s => s.code == stop);
+                
+                let passengers = 0;
+                let consist = [];
+                let loading_desc = [];
+                for (let car of train?.consist?.cars || []) {
+                    passengers += car?.passengers || 0;
+                    loading_desc.push(car?.loading || '');
+                    consist.push(car.number); // other stuff can just be looked up from car no
+                }
+                
+                if (passengers == 0) {
+                    passengers = null;
+                }
+                
+                let do_update = null;
+                if (train?.details?.direction == 'E'
+                    // Record the passenger count only once, the first non-null count after the train leaves
+                    && stop_details?.stop_status == 'DEPARTED'
+                    // Don't record loading at the eastbound terminal (yes, it will show DEPARTED there)
+                    && train?.details?.stops?.at(-1)?.code != stop) {
+                    do_update = 'once';
+                } else if (train?.details?.direction == 'W' && stop_details?.stop_status == 'EN_ROUTE') {
+                    // Update the passenger count until the train arrives
+                    // TODO: evaluate the number of wasted writes this causes
+                    do_update = 'yes';
+                } else {
+                    passengers = null;
+                    loading_desc = null;
+                    do_update = 'yes'; // update, but not the loading
+                }
+                
+                trains.push({
+                    "stop": stop,
+                    "operator": train.railroad,
+                    "run_date": Date.parse(train.run_date) / 1000,
+                    // not really sure why I used *event* time here, but they seem to differ ~1 minute
+                    "train_time": event_details.sched_time || stop_details.sched_time,
+                    "train_no": train.train_num,
+                    "route": train.details?.branch,
+                    "origin": train.details?.stops?.at(0)?.code,
+                    "destination": train.details?.stops?.at(-1)?.code,
+                    "track": stop_details?.sign_track || event_details?.act_track,
+                    "consist": JSON.stringify(consist),
+                    "otp": stop_details?.act_time ? stop_details.sched_time - stop_details.act_time : null,
+                    "canceled": train?.status?.canceled,
+                    "passengers": passengers,
+                    "loading_desc": loading_desc,
+                    "do_update": do_update,
+                });
+            }
+            return db.add_track(trains);
+        }
+    }
+    
+    let results = await Promise.all(promises);
+    return results.reduce((a, b) => [a[0] + b[0], a[1] + b[1]]);
+}
+
+// Killed by Akamai WAF
 async function fetch_amtrak(db, env) {
     const date_in_ny = (new Date(Date.now() -
             Number.parseInt(
@@ -85,6 +174,7 @@ async function fetch_amtrak(db, env) {
                     "stop": "NY",
                     "operator": "Amtrak",
                     "train_time": train_time,
+                    "run_date": Date.parse(t.travelService?.date) / 1000,
                     "train_no": t.travelService?.number,
                     "route": t.travelService?.name?.description,
                     "origin": t.travelService?.origin?.code,
@@ -96,7 +186,7 @@ async function fetch_amtrak(db, env) {
                 }
             }
         );
-        return trains;
+        return db.add_track(trains);
     }
 }
 
@@ -105,9 +195,10 @@ export default {
         const url = new URL(req.url);
         
         if (url.pathname == '/getCurrent') {
+            let station = url.searchParams.get("station");
+            let date = url.searchParams.get("date");
             let db = env.TRAINSTATE.getByName("the only instance");
-            let trains = await db.get_current();
-            console.log(trains);
+            let trains = await db.get_trains(Date.parse(date) / 1000, station);
             return Response.json(trains);
         }
     },
@@ -116,16 +207,11 @@ export default {
     // [[triggers]] configuration.
     async scheduled(event, env, ctx) {
         let db = env.TRAINSTATE.getByName("the only instance");
-        //let trains = [];
         // todo: parallel
         // let trains = await fetch_amtrak(db, env)
-        let trains = await fetch_njt(db, env);
-        
-        for (let t of trains) {
-            console.log(`${t.operator} ${t.train_no} : ${t.train_time} on track ${t.track}`);
-        }
-
-        let rows = await db.add_track(true, trains);
-        console.log(`${rows[0]} written, ${rows[1]} read`)
+        let njt = await fetch_njt(db, env);
+        console.log(`NJT ${njt[0]} written, ${njt[1]} read`);
+        let lirr = await fetch_lirr(db, env);
+        console.log(`LIRR ${lirr[0]} written, ${lirr[1]} read`);
     },
 };

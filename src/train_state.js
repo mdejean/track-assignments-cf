@@ -5,70 +5,95 @@ export class TrainState extends DurableObject {
         super(ctx, env);
         ctx.blockConcurrencyWhile(async () => {
             this.sql = ctx.storage.sql;
-            const schema_sql = `        
+            const schema_sql = `
             create table if not exists train_track (
                 operator varchar,
-                train_time int,
+                run_date int,
                 train_no varchar,
+                train_time int,
                 stop varchar,
                 track varchar,
                 otp int,
                 canceled int,
-                primary key (train_time, operator, train_no, stop)
+                passengers int,
+                loading_desc varchar, -- json
+                primary key (stop, run_date, operator, train_no)
             ) without rowid;
             
             create table if not exists train_route (
                 operator varchar,
-                train_time int,
+                run_date int,
                 train_no varchar,
                 route varchar,
                 origin varchar,
                 destination varchar,
-                consist blob, -- jsonb
-                primary key (train_time, operator, train_no)
+                consist varchar, -- json
+                primary key (run_date, operator, train_no)
             ) without rowid;
-            `
+            `;
+            if (this.sql.exec("select 1 from sqlite_schema where name = 'train_track' and sql like '%passengers%'").next().done) {
+                ctx.storage.deleteAll();
+            };
+            
             this.sql.exec(schema_sql);
         });
     }
     
-    async add_track(do_update, trains) {
+    async add_track(trains) {
         let write = 0;
         let read = 0;
         for (let t of trains) {
             // train_route never updates
             let route_result = this.sql.exec(`
-                insert into train_route (operator, train_time, train_no, route, origin, destination, consist)
+                insert into train_route (operator, run_date, train_no, route, origin, destination, consist)
                 values                  (       ?,          ?,        ?,     ?,      ?,           ?,       ?)
-                on conflict do nothing`, t.operator, t.train_time, t.train_no, t.route, t.origin, t.destination, t.consist);
+                on conflict do nothing`, t.operator, t.run_date, t.train_no, t.route, t.origin, t.destination, t.consist);
+            
+            let conflict_clause = `
+                on conflict do update set
+                    track = coalesce(excluded.track, train_track.track),
+                    otp = excluded.otp,
+                    canceled = excluded.canceled,
+                    passengers = coalesce(excluded.passengers, train_track.passengers),
+                    loading_desc = coalesce(excluded.loading_desc, train_track.loading_desc)
+                where  (excluded.track is not null and excluded.track is distinct from train_track.track)
+                    or (excluded.otp is not null and excluded.otp is distinct from train_track.otp)
+                    or (excluded.canceled is not null and excluded.canceled is distinct from train_track.canceled)`;
+            if (t?.do_update == 'once') {
+                conflict_clause = `
+                    on conflict do update set
+                        track = coalesce(train_track.track, excluded.track),
+                        otp = excluded.otp,
+                        canceled = excluded.canceled,
+                        passengers = coalesce(train_track.passengers, excluded.passengers),
+                        loading_desc = coalesce(train_track.loading_desc, excluded.loading_desc)
+                    where (train_track.track is null and excluded.track is not null)
+                        or (train_track.passengers is null and excluded.passengers is not null)
+                        or (train_track.loading_desc is null and excluded.loading_desc is not null)`;
+            }
             
             let track_result = this.sql.exec(`
-                insert into train_track (operator, train_time, train_no, stop, track, otp, canceled)
-                                 values (       ?,          ?,        ?,    ?,     ?,   ?,        ?)
-                on conflict do ` + (
-                    !do_update ? "nothing" :
-                    `update set track = coalesce(excluded.track, train_track.track), otp = excluded.otp, canceled = excluded.canceled
-                     where (excluded.track is not null and excluded.track is distinct from train_track.track)
-                        or (excluded.otp is not null and excluded.otp is distinct from train_track.otp)
-                        or (excluded.canceled is not null and excluded.canceled is distinct from train_track.canceled)`
-                ),                       t.operator, t.train_time, t.train_no, t.stop, t.track, t.otp, t.canceled);
+                insert into train_track (operator, run_date, train_time, train_no, stop, track, otp, canceled, passengers, loading_desc)
+                                 values (       ?,        ?,          ?,        ?,    ?,     ?,   ?,        ?,          ?,            ?)
+                ` + conflict_clause,   t.operator, t.run_date, t.train_time, t.train_no, t.stop, t.track, t.otp, t.canceled, t.passengers, t.loading_desc);
             
             write += route_result.rowsWritten + track_result.rowsWritten;
             read += route_result.rowsRead + track_result.rowsRead;
         }
         
-        return [write, read]
+        return [write, read];
     }
     
-    async get_current() {
-        let now = Date.now() / 1000 - 60 * 60 * 10;
+    async get_trains(run_date, station) {
         let res = this.sql.exec(`
             select * from train_track where (train_time, track) in (
                 select max(train_time), track from train_track
                 where track is not null
-                and train_time > ?
+                and run_date = ?
+                and stop = ?
                 group by track
-            )`, now);
+            )
+            and run_date = ?`, run_date, station, run_date);
         console.log(res.rowsRead + " rows read");
         return res.toArray();
     }

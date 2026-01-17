@@ -136,9 +136,10 @@ async function fetch_lirr(db, env) {
                 });
             }
             
+            return trains;
             // skip RPC if no trains
             if (trains) {
-                return db.add_track(trains);
+                
             } else {
                 return Promise.resolve([0, 0]);
             }
@@ -146,7 +147,7 @@ async function fetch_lirr(db, env) {
     }
     
     let results = await Promise.all(promises);
-    return results.reduce((a, b) => [a[0] + b[0], a[1] + b[1]]);
+    return db.add_track(results.flat(1));
 }
 
 // Killed by Akamai WAF

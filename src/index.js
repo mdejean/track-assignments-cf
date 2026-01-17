@@ -84,10 +84,19 @@ async function fetch_lirr(db, env) {
             }
             let trains = [];
             for (let train of await res.json()) {
+                const stop_index = train.details?.stops?.findIndex(s => s.code == stop);
+                const stop_details = train.details?.stops?.at(stop_index);
+                const prev_stop_details = train.details?.stops?.at(stop_index - 1);
+                const next_stop_details = train.details?.stops?.at(stop_index + 1);
+                const event_details = train.details?.events?.find(s => s.code == stop);
+                const cars = train?.consist?.cars || [];
                 
-                let stop_details = train.details?.stops?.find(s => s.code == stop);
-                let event_details = train.details?.events?.find(s => s.code == stop);
-                let cars = train?.consist?.cars || [];
+                // don't update after train arrives at next stop
+                if (next_stop_details?.stop_status == 'DEPARTED') continue;
+                // don't update before train arrives at prev stop
+                if (prev_stop_details?.stop_status == 'EN_ROUTE') continue;
+                // don't update anything after train leaves stop inbound (also works for terminals!)
+                if (train?.details?.direction == 'W' && stop_details?.stop_status == 'DEPARTED') continue;
                 
                 let passengers = null;
                 let loading_desc = null;
@@ -113,9 +122,6 @@ async function fetch_lirr(db, env) {
                     do_update = 'yes'; // update, but not the loading
                 }
                 
-                // other stuff can just be looked up from car no
-                let consist = cars.map((c) => c.number);
-                
                 trains.push({
                     "stop": stop,
                     "operator": train.railroad,
@@ -127,7 +133,8 @@ async function fetch_lirr(db, env) {
                     "origin": train.details?.stops?.at(0)?.code,
                     "destination": train.details?.stops?.at(-1)?.code,
                     "track": stop_details?.sign_track || event_details?.act_track,
-                    "consist": consist ? JSON.stringify(consist) : null,
+                    // other stuff can just be looked up from car no
+                    "consist": cars ? JSON.stringify(cars.map((c) => c.number)) : null,
                     "otp": stop_details?.act_time ? stop_details.sched_time - stop_details.act_time : null,
                     "canceled": train?.status?.canceled,
                     "passengers": passengers,

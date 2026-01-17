@@ -89,8 +89,8 @@ async function fetch_lirr(db, env) {
                 let event_details = train.details?.events?.find(s => s.code == stop);
                 let cars = train?.consist?.cars || [];
                 
-                let passengers = cars.reduce((a, c) => a + (c?.passengers || 0), 0) || null;
-                let loading_desc = cars.map(c => c?.loading || '');
+                let passengers = null;
+                let loading_desc = null;
                 
                 let do_update = null;
                 if (train?.details?.direction == 'E'
@@ -99,10 +99,14 @@ async function fetch_lirr(db, env) {
                     // Don't record loading at the eastbound terminal (yes, it will show DEPARTED there)
                     && train?.details?.stops?.at(-1)?.code != stop) {
                     do_update = 'once';
+                    passengers = cars.reduce((a, c) => a + (c?.passengers || 0), 0) || null;
+                    loading_desc = cars.map(c => c?.loading || '');
                 } else if (train?.details?.direction == 'W' && stop_details?.stop_status == 'EN_ROUTE') {
                     // Update the passenger count until the train arrives
                     // TODO: evaluate the number of wasted writes this causes
                     do_update = 'yes';
+                    passengers = cars.reduce((a, c) => a + (c?.passengers || 0), 0) || null;
+                    loading_desc = cars.map(c => c?.loading || '');
                 } else {
                     passengers = null;
                     loading_desc = null;

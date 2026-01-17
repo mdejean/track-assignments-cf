@@ -127,11 +127,11 @@ async function fetch_lirr(db, env) {
                     "origin": train.details?.stops?.at(0)?.code,
                     "destination": train.details?.stops?.at(-1)?.code,
                     "track": stop_details?.sign_track || event_details?.act_track,
-                    "consist": JSON.stringify(consist),
+                    "consist": consist ? JSON.stringify(consist) : null,
                     "otp": stop_details?.act_time ? stop_details.sched_time - stop_details.act_time : null,
                     "canceled": train?.status?.canceled,
                     "passengers": passengers,
-                    "loading_desc": JSON.stringify(loading_desc),
+                    "loading_desc": loading_desc ? JSON.stringify(loading_desc) : null,
                     "do_update": do_update,
                 });
             }

@@ -87,19 +87,10 @@ async function fetch_lirr(db, env) {
                 
                 let stop_details = train.details?.stops?.find(s => s.code == stop);
                 let event_details = train.details?.events?.find(s => s.code == stop);
+                let cars = train?.consist?.cars || [];
                 
-                let passengers = 0;
-                let consist = [];
-                let loading_desc = [];
-                for (let car of train?.consist?.cars || []) {
-                    passengers += car?.passengers || 0;
-                    loading_desc.push(car?.loading || '');
-                    consist.push(car.number); // other stuff can just be looked up from car no
-                }
-                
-                if (passengers == 0) {
-                    passengers = null;
-                }
+                let passengers = cars.reduce((a, c) => a + (c?.passengers || 0), 0) || null;
+                let loading_desc = cars.map(c => c?.loading || '');
                 
                 let do_update = null;
                 if (train?.details?.direction == 'E'
@@ -117,6 +108,9 @@ async function fetch_lirr(db, env) {
                     loading_desc = null;
                     do_update = 'yes'; // update, but not the loading
                 }
+                
+                // other stuff can just be looked up from car no
+                let consist = cars.map((c) => c.number);
                 
                 trains.push({
                     "stop": stop,
@@ -137,7 +131,13 @@ async function fetch_lirr(db, env) {
                     "do_update": do_update,
                 });
             }
-            return db.add_track(trains);
+            
+            // skip RPC if no trains
+            if (trains) {
+                return db.add_track(trains);
+            } else {
+                return Promise.resolve([0, 0]);
+            }
         }
     }
     

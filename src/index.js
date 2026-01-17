@@ -211,11 +211,9 @@ export default {
     // [[triggers]] configuration.
     async scheduled(event, env, ctx) {
         let db = env.TRAINSTATE.getByName("the only instance");
-        // todo: parallel
         // let trains = await fetch_amtrak(db, env)
-        let njt = await fetch_njt(db, env);
+        const [lirr, njt] = await Promise.all([fetch_lirr(db, env), fetch_njt(db, env)]);
         console.log(`NJT ${njt[0]} written, ${njt[1]} read`);
-        let lirr = await fetch_lirr(db, env);
         console.log(`LIRR ${lirr[0]} written, ${lirr[1]} read`);
     },
 };

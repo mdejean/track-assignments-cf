@@ -58,7 +58,9 @@ export class TrainState extends DurableObject {
                     loading_desc = coalesce(excluded.loading_desc, train_track.loading_desc)
                 where  (excluded.track is not null and excluded.track is distinct from train_track.track)
                     or (excluded.otp is not null and excluded.otp is distinct from train_track.otp)
-                    or (excluded.canceled is not null and excluded.canceled is distinct from train_track.canceled)`;
+                    or (excluded.canceled is not null and excluded.canceled is distinct from train_track.canceled)
+                    or (excluded.passengers is not null and excluded.passengers is distinct from train_track.passengers)
+                    or (excluded.loading_desc is not null and excluded.loading_desc is distinct from train_track.loading_desc)`;
             if (t?.do_update == 'once') {
                 conflict_clause = `
                     on conflict do update set

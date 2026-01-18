@@ -5,6 +5,9 @@ export class TrainState extends DurableObject {
         super(ctx, env);
         ctx.blockConcurrencyWhile(async () => {
             this.sql = ctx.storage.sql;
+            this.kv = ctx.storage.kv;
+            this.track_occupancy = this.kv.get("track_occupancy");
+            
             const schema_sql = `
             create table if not exists train_track (
                 operator varchar,
@@ -31,13 +34,9 @@ export class TrainState extends DurableObject {
                 primary key (run_date, operator, train_no)
             ) without rowid;
             `;
-            if (this.sql.exec("select 1 from sqlite_schema where name = 'train_track' and sql like '%passengers%'").next().done) {
-                ctx.storage.deleteAll();
-            };
+            //TODO: schema migrations
             
             this.sql.exec(schema_sql);
-            
-            this.track_occupancy = this.kv.get("track_occupancy");
         });
     }
     

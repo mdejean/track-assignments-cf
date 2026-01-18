@@ -36,7 +36,7 @@
           "tag": "v1",
           "new_sqlite_classes": ["TrainState", "NJTToken"]
         }
-    ]
+    ],
     /**
      * Environment Variables
      * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
@@ -48,5 +48,8 @@
      * https://developers.cloudflare.com/workers/static-assets/binding/
      * TODO: status page and (authed) download/drain
      */
-    // "assets": {  "directory": "./public/",  "binding": "ASSETS" }
+    "assets": {
+        "directory": "./assets/",
+        "binding": "ASSETS"
+    }
 }

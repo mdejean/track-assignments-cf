@@ -4,9 +4,7 @@ export class TrainState extends DurableObject {
     constructor(ctx, env) {
         super(ctx, env);
         ctx.blockConcurrencyWhile(async () => {
-            this.sql = ctx.storage.sql;
-            this.kv = ctx.storage.kv;
-            this.track_occupancy = this.kv.get("track_occupancy");
+            this.track_occupancy = ctx.storage.kv.get("track_occupancy") || {};
             
             const schema_sql = `
             create table if not exists train_track (
@@ -36,7 +34,7 @@ export class TrainState extends DurableObject {
             `;
             //TODO: schema migrations
             
-            this.sql.exec(schema_sql);
+            ctx.storage.sql.exec(schema_sql);
         });
     }
     
@@ -45,7 +43,7 @@ export class TrainState extends DurableObject {
         let read = 0;
         for (let t of trains) {
             // train_route never updates
-            let route_result = this.sql.exec(`
+            let route_result = this.ctx.storage.sql.exec(`
                 insert into train_route (operator, run_date, train_no, route, origin, destination, consist)
                 values                  (       ?,          ?,        ?,     ?,      ?,           ?,       ?)
                 on conflict do nothing`, t.operator, t.run_date, t.train_no, t.route, t.origin, t.destination, t.consist);
@@ -75,7 +73,7 @@ export class TrainState extends DurableObject {
                         or (train_track.loading_desc is null and excluded.loading_desc is not null)`;
             }
             
-            let track_result = this.sql.exec(`
+            let track_result = this.ctx.storage.sql.exec(`
                 insert into train_track (  operator,   run_date,   train_time,   train_no,   stop,   track,   otp,   canceled,   passengers,   loading_desc)
                                  values (         ?,          ?,            ?,          ?,      ?,       ?,     ?,          ?,            ?,              ?)
                 ` + conflict_clause,     t.operator, t.run_date, t.train_time, t.train_no, t.stop, t.track, t.otp, t.canceled, t.passengers, t.loading_desc);
@@ -87,7 +85,7 @@ export class TrainState extends DurableObject {
                 // going to just ignore the possiblity that trains could go out of schedule order on a track
                 if ((this.track_occupancy?.[t.track]?.train_time || 0) < t.train_time) {
                     this.track_occupancy[t.track] = t;
-                    ctx.storage.kv.put("track_occupancy", this.track_occupancy);
+                    this.ctx.storage.kv.put("track_occupancy", this.track_occupancy);
                 }
             }
         }

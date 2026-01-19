@@ -214,12 +214,12 @@ export default {
             let db = env.TRAINSTATE.getByName("the only instance");
             let trains = await db.get_last_train();
             return Response.json(trains);
-        } else if (req.cf?.tlsClientAuth?.certVerified && ['/track', '/route', '/delete', '/check_cert'].includes(url.pathname)) {
+        } else if (req.cf?.tlsClientAuth?.certVerified == 'SUCCESS' && ['/track', '/route', '/delete', '/check_cert'].includes(url.pathname)) {
             let db = env.TRAINSTATE.getByName("the only instance");
             let run_date = Date.parse(url.searchParams.get("run_date")) / 1000;
             if (url.pathname == '/check_cert') {
-                return Response("It works!");
-            }else if (url.pathname == '/track') {
+                return Response.json(req.cf?.tlsClientAuth);
+            } else if (url.pathname == '/track') {
                 return Response.json(await db.get_train_track(run_date));
             } else if (url.pathname == '/route') {
                 return Response.json(await db.get_train_route(run_date));

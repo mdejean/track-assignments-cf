@@ -23,6 +23,7 @@ export class NJTToken extends DurableObject {
                 {
                     "method": "POST",
                     "body": token_fd,
+                    "signal": AbortSignal.timeout(5000),
                 });
             if (token_req.status != 200) {
                 console.log(`NJT Token Got HTTP ${token_req.status}`);

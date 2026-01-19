@@ -33,7 +33,8 @@ async function fetch_njt(db, env) {
     let resp = await fetch(env.NJT_API,
         {
             "method": "POST",
-            "body": fd
+            "body": fd,
+            "signal": AbortSignal.timeout(5000),
         });
     
     if (resp.status != 200) {
@@ -75,6 +76,7 @@ async function fetch_lirr(db, env) {
                     "Accept-Version": "3.0",
                     "x-api-key": env.API_KEY,
                 }),
+                "signal": AbortSignal.timeout(5000),
             });
         promises.push(req.then(handle_req, async (reason) => Promise.resolve(reason)));
         async function handle_req(res) {
@@ -208,10 +210,22 @@ export default {
     async fetch(req, env, ctx) {
         const url = new URL(req.url);
         
-        if (url.pathname == '/getCurrent') {
+        if (url.pathname == '/last') {
             let db = env.TRAINSTATE.getByName("the only instance");
             let trains = await db.get_last_train();
             return Response.json(trains);
+        } else if (req.cf?.tlsClientAuth?.certVerified && ['/track', '/route', '/delete'].includes(url.pathname)) {
+            let db = env.TRAINSTATE.getByName("the only instance");
+            let run_date = Date.parse(url.searchParams.get("run_date")) / 1000;
+            if (url.pathname == '/check_cert') {
+                return Response("It works!");
+            }else if (url.pathname == '/track') {
+                return Response(await db.get_train_track(run_date));
+            } else if (url.pathname == '/route') {
+                return Response(await db.get_train_route(run_date));
+            } else if (url.pathname == '/delete') {
+                return Response(await db.delete_data(run_date));
+            }
         }
     },
 

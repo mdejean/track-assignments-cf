@@ -11,6 +11,12 @@
         "nodejs_compat",
         "no_nodejs_compat_v2",
     ],
+    "routes": [
+        {
+            "pattern": "trains.marcel.dejean.nyc",
+            "custom_domain": true
+        }
+    ],
     "observability": {
         "enabled": true
     },

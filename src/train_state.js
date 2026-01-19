@@ -96,4 +96,20 @@ export class TrainState extends DurableObject {
     async get_last_train() {
         return this.track_occupancy;
     }
+    
+    async get_train_track(run_date) {
+        return this.ctx.storage.sql.exec("select * from train_track where run_date = ?", run_date).toArray();
+    }
+    
+    async get_train_route(run_date) {
+        return this.ctx.storage.sql.exec("select * from train_route where run_date = ?", run_date).toArray();
+    }
+    
+    // 5GB is lots, but still better to keep it small
+    async delete_data(run_date) {
+        return this.ctx.storage.sql.exec(`
+                delete from train_track where run_date = ?;
+                delete from train_route where run_date = ?;
+            `, run_date, run_date).rowsWritten;
+    }
 }

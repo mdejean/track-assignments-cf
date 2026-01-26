@@ -25,6 +25,9 @@
             "*/4 * * * *"
         ]
     },
+    "limits": {
+        "cpu_ms": 50
+    },
     "durable_objects": {
         "bindings": [
             {

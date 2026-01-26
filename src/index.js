@@ -112,7 +112,10 @@ async function fetch_lirr(db, env) {
                     do_update = 'once';
                     passengers = cars.reduce((a, c) => a + (c?.passengers || 0), 0) || null;
                     if (!passengers) {
-                        loading_desc = cars.map(c => c?.loading || '');
+                        loading_desc = cars.map(c => (c?.loading != 'NO_DATA') ? c?.loading : '');
+                        if (loading_desc.every(d => !d)) {
+                            loading_desc = null;
+                        }
                     }
                 } else if (train?.details?.direction == 'W' && stop_details?.stop_status == 'EN_ROUTE') {
                     // Update the passenger count until the train arrives
@@ -120,7 +123,10 @@ async function fetch_lirr(db, env) {
                     do_update = 'yes';
                     passengers = cars.reduce((a, c) => a + (c?.passengers || 0), 0) || null;
                     if (!passengers) {
-                        loading_desc = cars.map(c => c?.loading || '');
+                        loading_desc = cars.map(c => (c?.loading != 'NO_DATA') ? c?.loading : '');
+                        if (loading_desc.every(d => !d)) {
+                            loading_desc = null;
+                        }
                     }
                 } else {
                     passengers = null;
@@ -140,7 +146,7 @@ async function fetch_lirr(db, env) {
                     "destination": train.details?.stops?.at(-1)?.code,
                     "track": stop_details?.sign_track || event_details?.act_track,
                     // other stuff can just be looked up from car no
-                    "consist": cars ? JSON.stringify(cars.map((c) => c.number)) : null,
+                    "consist": cars.length ? JSON.stringify(cars.map((c) => c.number)) : null,
                     "otp": stop_details?.act_time ? stop_details.sched_time - stop_details.act_time : null,
                     "canceled": train?.status?.canceled,
                     "passengers": passengers,

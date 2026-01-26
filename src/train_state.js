@@ -107,9 +107,7 @@ export class TrainState extends DurableObject {
     
     // 5GB is lots, but still better to keep it small
     async delete_data(run_date) {
-        return this.ctx.storage.sql.exec(`
-                delete from train_track where run_date = ?;
-                delete from train_route where run_date = ?;
-            `, run_date, run_date).rowsWritten;
+        return this.ctx.storage.sql.exec("delete from train_track where run_date = ?;", run_date).rowsWritten
+            + this.ctx.storage.sql.exec("delete from train_route where run_date = ?;", run_date).rowsWritten;
     }
 }

@@ -9,8 +9,7 @@ elif [ -z $HOST ] ; then
     exit 1
 fi
 
-#last_date=`psql psny --tuples-only -A -c "select extract(epoch from max(run_date)) from train_track"`
-last_date=$(date -u -d "2026-01-19" +%s)
+last_date=`psql psny --tuples-only -A -c "select extract(epoch from max(run_date)) from train_track"`
 today=$(date -d "00:00 UTC" +%s)
 for ts in $(seq $last_date 86400 $today) ; do
     date=$(date -u -d @$ts +%Y-%m-%d)

@@ -171,10 +171,10 @@ async function fetch_amtrak(date) {
     const browser = await puppeteer.launch(env.MYBROWSER);
     const page = await browser.newPage();
     await page.goto(env.AMTRAK_REFERER);
-    const trains = await page.evaluate(get_trains)
+    const trains = await page.evaluate(get_trains, amtrak_url)
     
-    async function get_trains() {
-        let resp = await fetch(amtrak_url);
+    async function get_trains(url) {
+        let resp = await fetch(url);
 
         if (resp.status != 200) {
             let t = await resp.text();

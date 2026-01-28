@@ -2,13 +2,14 @@
 /**
  * track assignments
  */
+import { env } from "cloudflare:workers";
 
 export { TrainState } from "./train_state";
 export { NJTToken } from "./njt_token";
 
 
 // Now doing the whole fancy token thingy (more security theater)
-async function fetch_njt(db, env) {
+async function fetch_njt() {
     // run date changes at 8AM GMT (4AM EDT / 3AM EST) when no NJT trains depart
     function get_run_date(d) {
         let t = (Date.parse(d) / 1000 - 8 * 60 * 60) | 0;
@@ -40,33 +41,31 @@ async function fetch_njt(db, env) {
     if (resp.status != 200) {
         let t = await resp.text();
         console.log(`NJT Got HTTP ${resp.status} : ${t}`);
-        return [0, 0];
+        return [];
     } else {
         let j = await resp.json();
-        return db.add_track(
-            j["ITEMS"].map((t) =>
-                ({
-                    "stop": "NY",
-                    "operator": (t["TRAIN_ID"][0] == 'A') ? "Amtrak" : "NJT",
-                    "train_time": Date.parse(t["SCHED_DEP_DATE"] + " " + tzname) / 1000,
-                    "run_date": get_run_date(t["SCHED_DEP_DATE"] + " " + tzname),
-                    "train_no": ((t["TRAIN_ID"][0] == 'A') ? t["TRAIN_ID"].substring(1) : t["TRAIN_ID"]),
-                    "route": t["LINEABBREVIATION"],
-                    "origin": "NY",
-                    "destination": t["DESTINATION"].replace(/-SEC|&#9992/g,"").trim(),
-                    "track": t["TRACK"] || null,
-                    "consist": null,
-                    "otp": t["SEC_LATE"],
-                    "canceled": t["STATUS"].startsWith("CANCEL"),
-                    "do_update": "yes",
-                })
-            )
+        return j["ITEMS"].map((t) =>
+            ({
+                "stop": "NY",
+                "operator": (t["TRAIN_ID"][0] == 'A') ? "Amtrak" : "NJT",
+                "train_time": Date.parse(t["SCHED_DEP_DATE"] + " " + tzname) / 1000,
+                "run_date": get_run_date(t["SCHED_DEP_DATE"] + " " + tzname),
+                "train_no": ((t["TRAIN_ID"][0] == 'A') ? t["TRAIN_ID"].substring(1) : t["TRAIN_ID"]),
+                "route": t["LINEABBREVIATION"],
+                "origin": "NY",
+                "destination": t["DESTINATION"].replace(/-SEC|&#9992/g,"").trim(),
+                "track": t["TRACK"] || null,
+                "consist": null,
+                "otp": t["SEC_LATE"],
+                "canceled": t["STATUS"].startsWith("CANCEL"),
+                "do_update": "yes",
+            })
         );
     }
 }
 
 // for this one we do lots of stations and get passenger counts - can we keep it under 10 ms?
-async function fetch_lirr(db, env) {
+async function fetch_lirr() {
     let promises = [];
     for (let stop of ['ATL', 'HPA', 'LIC', 'GCT', 'WDD', 'NYK', 'JAM', '0NY']) {
         let req = fetch(env.LIRR_API + stop + "?include_passed=true&hours=0.33",
@@ -81,6 +80,7 @@ async function fetch_lirr(db, env) {
         promises.push(req.then(handle_req, async (reason) => Promise.resolve(reason)));
         async function handle_req(res) {
             if (res.status != 200) {
+                let t = await res.text();
                 console.log(`LIRR for {stop} Got HTTP ${res.status} : ${t}`);
                 return Promise.resolve([]);
             }
@@ -160,7 +160,7 @@ async function fetch_lirr(db, env) {
     }
     
     let results = await Promise.all(promises);
-    return db.add_track(results.flat(1));
+    return results.flat(1);
 }
 
 // Killed by Akamai WAF
@@ -241,17 +241,18 @@ export default {
     // [[triggers]] configuration.
     async scheduled(event, env, ctx) {
         let db = env.TRAINSTATE.getByName("the only instance");
-        // let trains = await fetch_amtrak(db, env)
-        let done = [
-            fetch_njt(db, env).then(njt => {
-                    console.log(`NJT ${njt[0]} written, ${njt[1]} read`);
-                }
-            ),
-            fetch_lirr(db, env).then(lirr => {
-                    console.log(`LIRR ${lirr[0]} written, ${lirr[1]} read`);
-                }
-            ),
-        ];
-        ctx.waitUntil(Promise.all(done));
+            let done = [
+                fetch_njt().then(async trains => {
+                        const njt = await db.add_track(trains);
+                        console.log(`NJT ${njt[0]} written, ${njt[1]} read`);
+                    }
+                ),
+                fetch_lirr().then(async trains => {
+                        const lirr = await db.add_track(trains);
+                        console.log(`LIRR ${lirr[0]} written, ${lirr[1]} read`);
+                    }
+                ),
+            ];
+            ctx.waitUntil(Promise.all(done));
     },
 };

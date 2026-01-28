@@ -6,7 +6,7 @@
     "$schema": "node_modules/wrangler/config-schema.json",
     "name": "track-assignments-cf",
     "main": "src/index.js",
-    "compatibility_date": "2025-12-10",
+    "compatibility_date": "2025-09-27",
     "compatibility_flags": [
         "nodejs_compat",
         "no_nodejs_compat_v2",
@@ -22,7 +22,8 @@
     },
     "triggers": {
         "crons": [
-            "*/4 * * * *"
+            "*/4 * * * *",
+            "27 12 * * *"
         ]
     },
     "durable_objects": {
@@ -36,6 +37,9 @@
                 "class_name": "NJTToken"
             },
         ]
+    },
+    "browser": {
+        "binding": "MYBROWSER"
     },
     "migrations": [
         {

@@ -3,6 +3,7 @@
  * track assignments
  */
 import { env } from "cloudflare:workers";
+import puppeteer from "@cloudflare/puppeteer";
 
 export { TrainState } from "./train_state";
 export { NJTToken } from "./njt_token";
@@ -163,53 +164,57 @@ async function fetch_lirr() {
     return results.flat(1);
 }
 
-// Killed by Akamai WAF
-async function fetch_amtrak(db, env) {
-    const date_in_ny = (new Date(Date.now() -
-            Number.parseInt(
-                (new Intl.DateTimeFormat(
-                    "en-US",
-                    {timeZone: "America/New_York", timeZoneName: "longOffset"})
-                ).formatToParts(new Date())
-                .filter((t) => t.type == "timeZoneName")
-                [0].value[5] //literally all this to get 5 or 4
-            ) * 60 * 60 * 1000
-        )).toISOString().substring(0, 10);
+// Behind Akamai WAF
+async function fetch_amtrak(date) {
+    const amtrak_url = env.AMTRAK_API + new Date(date * 1000).toISOString().substring(0, 10);
     
-    let resp = await fetch(env.AMTRAK_API + "NYP?departure-date=" + date_in_ny,
-        {
-            "method": "GET",
-            "referer": env.AMTRAK_REFERER,
-        });
+    const browser = await puppeteer.launch(env.MYBROWSER);
+    const page = await browser.newPage();
+    await page.goto(env.AMTRAK_REFERER);
+    const trains = await page.evaluate(get_trains)
+    
+    async function get_trains() {
+        let resp = await fetch(amtrak_url);
 
-    if (resp.status != 200) {
-        let t = await resp.text();
-        console.log(`Amtrak Got HTTP ${resp.status} : ${t}`);
-        return [];
-    } else {
-        let j = await resp.json();
-        let trains = j["data"].map(
-            (t) => {
-                let train_time = Date.parse(t.departure?.schedule?.dateTime || t.arrival?.schedule?.dateTime || t.travelService?.date) / 1000;
-                
-                return {
-                    "stop": "NY",
-                    "operator": "Amtrak",
-                    "train_time": train_time,
-                    "run_date": Date.parse(t.travelService?.date) / 1000,
-                    "train_no": t.travelService?.number,
-                    "route": t.travelService?.name?.description,
-                    "origin": t.travelService?.origin?.code,
-                    "destination": t.travelService?.destination?.code,
-                    "track": t.departure?.track?.number || t.arrival?.track?.number,
-                    "consist": null,
-                    "otp": train_time - Date.parse(t.departure?.statusInfo?.dateTime || t.arrival?.statusInfo?.dateTime) / 1000,
-                    "canceled": (t.departure?.statusInfo?.status || t.arrival?.statusInfo?.status || "ON_TIME").upper().startsWith("CANC"),
-                }
+        if (resp.status != 200) {
+            let t = await resp.text();
+            return {status: resp.status, response: t};
+        } else {
+            let j = await resp.json();
+            if (!j["data"]) {
+                return {status: resp.status, response: j};
             }
-        );
-        return db.add_track(trains);
+            let trains = j["data"].map(
+                (t) => {
+                    let train_time = Date.parse(t.departure?.schedule?.dateTime || t.arrival?.schedule?.dateTime || t.travelService?.date) / 1000;
+                    
+                    return {
+                        "stop": "NYP",
+                        "operator": "Amtrak",
+                        "train_time": train_time,
+                        "run_date": Date.parse(t.travelService?.date) / 1000,
+                        "train_no": t.travelService?.number,
+                        "route": t.travelService?.name?.description,
+                        "origin": t.travelService?.origin?.code,
+                        "destination": t.travelService?.destination?.code,
+                        "track": t.departure?.track?.number || t.arrival?.track?.number,
+                        "consist": null,
+                        "otp": train_time - Date.parse(t.departure?.statusInfo?.dateTime || t.arrival?.statusInfo?.dateTime) / 1000,
+                        "canceled": (t.departure?.statusInfo?.status || t.arrival?.statusInfo?.status || "ON_TIME").toUpperCase().startsWith("CANC"),
+                    }
+                }
+            );
+            return trains;
+        }
     }
+    
+    await browser.close();
+    
+    if (!trains.length) {
+        console.log(`Amtrak Got HTTP ${trains.status} : ${trains.response}`);
+        return [];
+    }
+    return trains;
 }
 
 export default {
@@ -220,7 +225,7 @@ export default {
             let db = env.TRAINSTATE.getByName("the only instance");
             let trains = await db.get_last_train();
             return Response.json(trains);
-        } else if (req.cf?.tlsClientAuth?.certVerified == 'SUCCESS' && ['/track', '/route', '/delete', '/check_cert'].includes(url.pathname)) {
+        } else if (req.cf?.tlsClientAuth?.certVerified == 'SUCCESS' && ['/track', '/route', '/delete', '/check_cert', '/amtrak'].includes(url.pathname)) {
             let db = env.TRAINSTATE.getByName("the only instance");
             let run_date = Date.parse(url.searchParams.get("run_date")) / 1000;
             if (url.pathname == '/check_cert') {
@@ -231,6 +236,11 @@ export default {
                 return Response.json(await db.get_train_route(run_date));
             } else if (url.pathname == '/delete') {
                 return Response.json(await db.delete_data(run_date));
+            } else if (url.pathname == '/amtrak') {
+                const trains = await fetch_amtrak(run_date);
+                const amtrak = await db.add_track(trains);
+                console.log(`Amtrak ${amtrak[0]} written, ${amtrak[1]} read`);
+                return Response.json(trains);
             }
         } else {
             return new Response(null, {status: 404});
@@ -241,6 +251,8 @@ export default {
     // [[triggers]] configuration.
     async scheduled(event, env, ctx) {
         let db = env.TRAINSTATE.getByName("the only instance");
+        if (event.cron[0] == '*') {
+            // every n minutes
             let done = [
                 fetch_njt().then(async trains => {
                         const njt = await db.add_track(trains);
@@ -254,5 +266,11 @@ export default {
                 ),
             ];
             ctx.waitUntil(Promise.all(done));
+        } else {
+            // daily
+            const trains = await fetch_amtrak(Date.now() / 1000 - 24 * 60 * 60);
+            const amtrak = await db.add_track(trains);
+            console.log(`Amtrak ${amtrak[0]} written, ${amtrak[1]} read`);
+        }
     },
 };

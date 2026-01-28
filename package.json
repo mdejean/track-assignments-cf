@@ -8,6 +8,7 @@
 		"start": "wrangler dev --test-scheduled"
 	},
 	"devDependencies": {
+		"@cloudflare/puppeteer": "^1.0.5",
 		"wrangler": "^4.54.0"
 	}
 }

@@ -97,7 +97,7 @@ async function fetch_lirr() {
                 // don't update after train arrives at next stop
                 if (next_stop_details?.stop_status == 'DEPARTED') continue;
                 // don't update before train arrives at prev stop
-                if (prev_stop_details?.stop_status == 'EN_ROUTE') continue;
+                if (stop_index > 0 && prev_stop_details?.stop_status == 'EN_ROUTE') continue;
                 // don't update anything after train leaves stop inbound (also works for terminals!)
                 if (train?.details?.direction == 'W' && stop_details?.stop_status == 'DEPARTED') continue;
                 

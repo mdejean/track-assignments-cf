@@ -136,7 +136,7 @@ async function fetch_lirr() {
                 }
                 
                 if (!train.railroad) {
-                    console.log(`Mystery train`)
+                    console.log(`Mystery train`);
                     console.log(train);
                 } else {
                     trains.push({
@@ -176,7 +176,7 @@ async function fetch_amtrak(date) {
     const browser = await puppeteer.launch(env.MYBROWSER);
     const page = await browser.newPage();
     await page.goto(env.AMTRAK_REFERER);
-    const trains = await page.evaluate(get_trains, amtrak_url)
+    const trains = await page.evaluate(get_trains, amtrak_url);
     
     async function get_trains(url) {
         let resp = await fetch(url);

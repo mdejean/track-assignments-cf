@@ -42,6 +42,12 @@ export class TrainState extends DurableObject {
         let write = 0;
         let read = 0;
         for (let t of trains) {
+            if (!t.operator) {
+                console.log(`Mystery train`);
+                console.log(t);
+                continue;
+            }
+            
             // train_route never updates
             let route_result = this.ctx.storage.sql.exec(`
                 insert into train_route (operator, run_date, train_no, route, origin, destination, consist)

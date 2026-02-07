@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Penn Station track occupancy</title>
+<style>
+body {
+    font: menu;
+}
+
+.tracks {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+#tracks div {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+}
+#tracks div span {
+    display: block;
+    flex: 1;
+}
+</style>
+</head>
+<body>
+<div id="tracks">
+</div>
+<div id="footer"></div>
+<script type="text/javascript">
+"use strict";
+let parent = document.getElementById("tracks");
+for (let track = 21; track; track--) {
+    let e = document.createElement("div");
+    e.id = "track_" + track;
+    e.innerHTML = "Track " + track;
+    parent.appendChild(e);
+}
+
+let time_format = new Intl.DateTimeFormat(
+    "en-US",
+    {
+        "timeStyle": "short",
+        "timeZone": "America/New_York"
+    });
+
+function format_time(t) {
+    return time_format.format(new Date(t * 1000));
+}
+
+function format_otp(s) {
+
+}
+
+const ui = [
+    {"key": "track", "format": (t) => "Track " + t},
+    {"key": "operator", "format": null},
+    {"key": "train_no", "format": (n) => "# " + n},
+    {"key": "train_time", "format": format_time},
+    {"key": "otp", "format": (s) => !s ? "" : `${Math.trunc(s/60)}:${("00" + (s - Math.trunc(s/60)*60)).slice(-2)}`},
+    {"key": "route", "format": null},
+    {"key": "destination", "format": (d) => ['NYK', 'NYP', 'NY'].includes(d) ? "" : d},
+    {"key": "origin", "format": (d) => ['NYK', 'NYP', 'NY'].includes(d) ? "" : d},
+    {"key": "loading", "format": (t) => t?.passengers ? t.passengers + " passengers" : (t?.loading_desc ? t.loading_desc : "")},
+];
+
+function identity(s) {
+    return s;
+}
+
+async function update() {
+    let trains = await (await fetch('/last')).json();
+    for (let track in trains) {
+        let e = document.getElementById("track_" + track);
+        e.innerHTML = "";
+        for (let u of ui) {
+            let s = document.createElement("span");
+            s.className = u.key;
+            s.innerHTML = (u.format || identity)(trains[track]?.[u.key] === undefined ? trains[track] : trains[track]?.[u.key]);
+            e.appendChild(s);
+        }
+    }
+    
+    document.getElementById("footer").innerHTML = "Last updated " + time_format.format();
+    window.setTimeout(update, 4 * 60 * 1000);
+}
+
+window.setTimeout(update);
+</script>
+</body>
+</html>

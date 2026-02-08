@@ -78,7 +78,10 @@ async function fetch_lirr() {
                 }),
                 "signal": AbortSignal.timeout(5000),
             });
-        promises.push(req.then(handle_req, async (reason) => Promise.resolve(reason)));
+        promises.push(req.then(handle_req, async (reason) => {
+                console.log(`LIRR for {stop} Got ${reason}`);
+                return Promise.resolve([]);
+            }));
         async function handle_req(res) {
             if (res.status != 200) {
                 let t = await res.text();
@@ -135,30 +138,25 @@ async function fetch_lirr() {
                     do_update = 'yes'; // update, but not the loading
                 }
                 
-                if (!train.railroad) {
-                    console.log(`Mystery train`);
-                    console.log(train);
-                } else {
-                    trains.push({
-                        "stop": stop,
-                        "operator": train.railroad,
-                        "run_date": Date.parse(train.run_date) / 1000,
-                        // not really sure why I used *event* time here, but they seem to differ ~1 minute
-                        "train_time": event_details.sched_time || stop_details.sched_time,
-                        "train_no": train.train_num,
-                        "route": train.details?.branch,
-                        "origin": train.details?.stops?.at(0)?.code,
-                        "destination": train.details?.stops?.at(-1)?.code,
-                        "track": stop_details?.sign_track || event_details?.act_track,
-                        // other stuff can just be looked up from car no
-                        "consist": cars.length ? JSON.stringify(cars.map((c) => c.number)) : null,
-                        "otp": stop_details?.act_time ? stop_details.sched_time - stop_details.act_time : null,
-                        "canceled": train?.status?.canceled,
-                        "passengers": passengers,
-                        "loading_desc": loading_desc ? JSON.stringify(loading_desc) : null,
-                        "do_update": do_update,
-                    });
-                }
+                trains.push({
+                    "stop": stop,
+                    "operator": train.railroad,
+                    "run_date": Date.parse(train.run_date) / 1000,
+                    // not really sure why I used *event* time here, but they seem to differ ~1 minute
+                    "train_time": event_details.sched_time || stop_details.sched_time,
+                    "train_no": train.train_num,
+                    "route": train.details?.branch,
+                    "origin": train.details?.stops?.at(0)?.code,
+                    "destination": train.details?.stops?.at(-1)?.code,
+                    "track": stop_details?.sign_track || event_details?.act_track,
+                    // other stuff can just be looked up from car no
+                    "consist": cars.length ? JSON.stringify(cars.map((c) => c.number)) : null,
+                    "otp": stop_details?.act_time ? stop_details.sched_time - stop_details.act_time : null,
+                    "canceled": train?.status?.canceled,
+                    "passengers": passengers,
+                    "loading_desc": loading_desc ? JSON.stringify(loading_desc) : null,
+                    "do_update": do_update,
+                });
             }
             
             return trains;

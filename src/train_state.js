@@ -47,12 +47,11 @@ export class TrainState extends DurableObject {
                 values                  (       ?,          ?,        ?,     ?,      ?,           ?,       ?)
                 on conflict do update set
                     consist = excluded.consist,
+                    route = excluded.route,
                     origin = excluded.origin,
                     destination = excluded.destination
                 where (excluded.consist is not null and excluded.consist is distinct from train_route.consist)
-                or (excluded.route is not null and excluded.route is distinct from train_route.route)
-                or (excluded.origin is not null and excluded.origin is distinct from train_route.origin)
-                or (excluded.destination is not null and excluded.destination is distinct from train_route.destination)
+                or (excluded.operator = 'Amtrak' and excluded.route != 'AMTK')
             `, t.operator, t.run_date, t.train_no, t.route, t.origin, t.destination, t.consist);
             
             let conflict_clause = `

@@ -8,16 +8,15 @@ import puppeteer from "@cloudflare/puppeteer";
 export { TrainState } from "./train_state";
 export { NJTToken } from "./njt_token";
 
+// run date changes at 8AM GMT (4AM EDT / 3AM EST) when no NJT trains depart
+function get_run_date(d) {
+    let t = (Date.parse(d) / 1000 - 8 * 60 * 60) | 0;
+    let days = (t / (60 * 60 * 24)) | 0;
+    return days * 60 * 60 * 24;
+}
 
 // Now doing the whole fancy token thingy (more security theater)
 async function fetch_njt() {
-    // run date changes at 8AM GMT (4AM EDT / 3AM EST) when no NJT trains depart
-    function get_run_date(d) {
-        let t = (Date.parse(d) / 1000 - 8 * 60 * 60) | 0;
-        let days = (t / (60 * 60 * 24)) | 0;
-        return days * 60 * 60 * 24;
-    }
-    
     let token = await env.NJTTOKEN.getByName("token").get_token();
     
     let fd = new FormData();
@@ -177,7 +176,10 @@ async function fetch_amtrak(date) {
     const trains = await page.evaluate(get_trains, amtrak_url);
     
     async function get_trains(url) {
-        let resp = await fetch(url);
+        let resp = await fetch(url,
+            {
+                "signal": AbortSignal.timeout(8000)
+            });
 
         if (resp.status != 200) {
             let t = await resp.text();
@@ -270,8 +272,8 @@ export default {
             ];
             ctx.waitUntil(Promise.all(done));
         } else {
-            // daily
-            const trains = await fetch_amtrak(Date.now() / 1000 - 24 * 60 * 60);
+            // hourly
+            const trains = await fetch_amtrak(Date.now() / 1000 - 8 * 60 * 60);
             const amtrak = await db.add_track(trains);
             console.log(`Amtrak ${amtrak[0]} written, ${amtrak[1]} read`);
         }

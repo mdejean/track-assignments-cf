@@ -57,7 +57,7 @@ async function fetch_njt() {
                 "destination": t["DESTINATION"].replace(/-SEC|&#9992/g,"").trim(),
                 "track": t["TRACK"] || null,
                 "consist": null,
-                "otp": t["SEC_LATE"],
+                "otp": -t["SEC_LATE"],
                 "canceled": t["STATUS"].startsWith("CANCEL"),
                 "do_update": "yes",
             })

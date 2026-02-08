@@ -58,7 +58,7 @@ const ui = [
     {"key": "operator", "format": null},
     {"key": "train_no", "format": (n) => "# " + n},
     {"key": "train_time", "format": format_time},
-    {"key": "otp", "format": (s) => !s ? "" : `${Math.trunc(s/60)}:${("00" + (s - Math.trunc(s/60)*60)).slice(-2)}`},
+    {"key": "otp", "format": (s) => s > 0 ? Math.round(s/60) + "m early" : s < 0 ? Math.round(-s/60) + "m late" : ""},
     {"key": "route", "format": null},
     {"key": "destination", "format": (d) => ['NYK', 'NYP', 'NY'].includes(d) ? "" : d},
     {"key": "origin", "format": (d) => ['NYK', 'NYP', 'NY'].includes(d) ? "" : d},

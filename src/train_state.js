@@ -89,13 +89,14 @@ export class TrainState extends DurableObject {
             
             if (t.track && (t.stop == 'NY' || t.stop == 'NYK' || t.stop == 'NYP')) {
                 // going to just ignore the possiblity that trains could go out of schedule order on a track
-                if ((this.track_occupancy?.[t.track]?.train_time || 0) < t.train_time) {
+                if ((this.track_occupancy?.[t.track]?.train_time || 0) <= t.train_time) {
                     this.track_occupancy[t.track] = t;
-                    this.ctx.storage.kv.put("track_occupancy", this.track_occupancy);
                 }
             }
         }
-        
+
+        this.ctx.storage.kv.put("track_occupancy", this.track_occupancy);
+
         return [write, read];
     }
     

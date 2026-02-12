@@ -16,7 +16,7 @@ function get_run_date(d) {
 }
 
 // Now doing the whole fancy token thingy (more security theater)
-async function fetch_njt() {
+async function fetch_njt(arg) {
     let token = await env.NJTTOKEN.getByName("token").get_token();
     
     let fd = new FormData();
@@ -65,9 +65,9 @@ async function fetch_njt() {
 }
 
 // for this one we do lots of stations and get passenger counts - can we keep it under 10 ms?
-async function fetch_lirr() {
+async function fetch_lirr(stops) {
     let promises = [];
-    for (let stop of ['ATL', 'HPA', 'LIC', 'GCT', 'WDD', 'NYK', 'JAM', '0NY']) {
+    for (let stop of stops) {
         let req = fetch(env.LIRR_API + stop + "?include_passed=true&hours=0.33",
             {
                 "method": "GET",
@@ -256,26 +256,24 @@ export default {
     // [[triggers]] configuration.
     async scheduled(event, env, ctx) {
         let db = env.TRAINSTATE.getByName("the only instance");
-        if (event.cron[0] == '*') {
-            // every n minutes
-            let done = [
-                fetch_njt().then(async trains => {
-                        const njt = await db.add_track(trains);
-                        console.log(`NJT ${njt[0]} written, ${njt[1]} read`);
-                    }
-                ),
-                fetch_lirr().then(async trains => {
-                        const lirr = await db.add_track(trains);
-                        console.log(`LIRR ${lirr[0]} written, ${lirr[1]} read`);
-                    }
-                ),
-            ];
-            ctx.waitUntil(Promise.all(done));
-        } else {
-            // hourly
+        // every n minutes
+        const scheduled = new Date(event.scheduledTime);
+        const funcs = [
+            {"func": fetch_lirr, "arg": ['NYK']},
+            {"func": fetch_njt, "arg": ['NJT']},
+            {"func": fetch_lirr, "arg": ['JAM']},
+            {"func": fetch_lirr, "arg": ['WDD', 'GCT']},
+            {"func": fetch_lirr, "arg": ['ATL', 'HPA', 'LIC', '0NY']},
+        ];
+        if (scheduled.getMinutes() == 27) {
             const trains = await fetch_amtrak(Date.now() / 1000 - 8 * 60 * 60);
             const amtrak = await db.add_track(trains);
             console.log(`Amtrak ${amtrak[0]} written, ${amtrak[1]} read`);
+        } else {
+            const o = funcs[scheduled.getMinutes() % funcs.length];
+            const trains = await o.func(o.arg);
+            const result = await db.add_track(trains);
+            console.log(`${o.arg} ${result[0]} written, ${result[1]} read`);
         }
     },
 };
